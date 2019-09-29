@@ -42,22 +42,25 @@ def initialize(context):
     
     # 参数设置
     # 持股数量，最终按照筛选选取排名前几位的股票作为候选股票
-    g.stocks_num  = 30
+    g.stocks_num  = 100
     
     # 分组数，打分的时候用，不同分组有不同的得分
     g.groups_num  = 10
     
     # 因子包括：market_cap，pe_ratio，pb_ratio，return_on_invested_capital，inc_revenue，inc_profit_before_tax
     # g.factor_pool = ['market_cap','pe_ratio_lyr','pb_ratio','inc_return','gross_profit_margin','inc_net_profit_year_on_year','inc_total_revenue_annual']
-    g.factor_pool = ['market_cap','pe_ratio_lyr','pb_ratio','inc_return','inc_net_profit_year_on_year','inc_total_revenue_annual']
+    # g.factor_pool = ['market_cap','pe_ratio_lyr','pb_ratio','inc_return','inc_net_profit_year_on_year','inc_total_revenue_annual']
+    # g.factor_pool = ['pe_ratio_lyr','inc_net_profit_year_on_year','inc_return','market_cap','inc_total_revenue_annual','pb_ratio']
+    g.factor_pool = ['pb_ratio','inc_return','pe_ratio_lyr','inc_net_profit_year_on_year','inc_total_revenue_annual','market_cap']
+    # g.factor_pool = ['pe_ratio_lyr','inc_return','market_cap','inc_total_revenue_annual','inc_net_profit_year_on_year','pb_ratio']
     
     # 是否需要取倒数
     # 判断逻辑按照越大越好的原则来设置
     # 如果实际是越小越好的因子就取倒数，一方面规避负值的影响，另一方面统一标准
-    g.backward_pool = [1,1,1,0,0,0]
+    g.backward_pool = [1,0,0,0,0,1]
     
     # 设置选取因子的数量，作为回测框架时调用
-    g.factor_num = 6
+    g.factor_num = 2
     
     
     # 买卖的全局变量数组，用于传递筛选结果
@@ -67,15 +70,15 @@ def initialize(context):
     ## 运行函数（reference_security为运行时间的参考标的；传入的标的只做种类区分，因此传入'000300.XSHG'或'510300.XSHG'是一样的）
     # 开盘前运行
     # 进行股票的挑选
-    # run_monthly(before_market_open, monthday = 1, time='before_open', reference_security='000300.XSHG')
+    run_monthly(before_market_open, monthday = 1, time='before_open', reference_security='000300.XSHG')
     # 开盘时运行
-    # run_monthly(market_open, monthday = 1, time='open', reference_security='000300.XSHG')
+    run_monthly(market_open, monthday = 1, time='open', reference_security='000300.XSHG')
 
 
     # 进行股票的挑选
-    run_weekly(before_market_open, 1, time='before_open', reference_security='000300.XSHG')
+    # run_weekly(before_market_open, 1, time='before_open', reference_security='000300.XSHG')
     # 开盘时运行
-    run_weekly(market_open, 1, time='open', reference_security='000300.XSHG')
+    # run_weekly(market_open, 1, time='open', reference_security='000300.XSHG')
 
 # 根据不同的时间段设置滑点与手续费
 def set_slip_fee(context):
@@ -113,7 +116,7 @@ def set_feasible_stocks(context):
     # 其实这个是比较关键的一步
     # 选择合理的股票Universe
     # 下一步在此步基础上操作
-    s = get_index_stocks('000300.XSHG', date=context.current_dt)
+    s = get_index_stocks('000002.XSHG', date=context.current_dt)
     #print '输入股票个数为：%s'%len(s)
     all_stocks = s
     #得到是否停牌信息的dataframe，停牌得1，未停牌得0
@@ -203,12 +206,15 @@ def get_candidate_list(context):
     # 填充值，因为逻辑是越大越好，所以选择-1进行填充
     factor_data_pd = factor_data_pd.fillna(-1)
     
+    
     # 2、进行打分
     # factor_data_pd已经被g.factor_num控制了因子数
     for col in factor_data_pd.columns:
         # 按因子大小从大到小降序排列
-        sorted_factor = pd.DataFrame(factor_data_pd.sort_values(by=col, ascending=False)[col])
-        
+        # sorted_factor = pd.DataFrame(factor_data_pd.sort_values(by=col, ascending=False)[col])
+        # 框架调用职能用python2的代码，所以用sort
+        sorted_factor = pd.DataFrame(factor_data_pd.sort(col, ascending=False)[col])
+
         # 新增加“_score”列
         # 打分赋初值
         sorted_factor[col+"_score"] = 0
@@ -232,8 +238,17 @@ def get_candidate_list(context):
     # 分数加和
     # 分数越小越好
     # 默认是升序排列，所以挑选分数最小的几只股票
-    sum_score = factor_data_pd.iloc[:, len(g.factor_pool):].sum(1).sort_values()
+    # sum_score = factor_data_pd.iloc[:, len(g.factor_pool):].sum(1).sort_values()
+    # 代码版本兼容问题
+
+
+    # pthon3 版本
+    # sum_score = factor_data_pd.iloc[:, g.factor_num:].sum(1).sort_values()
     
+    # python2 版本
+    factor_data_pd['total_score'] = factor_data_pd.iloc[:, g.factor_num:].sum(1)
+    sum_score = factor_data_pd.sort('total_score', ascending=True)['total_score']
+
     # 选股结果
     ret_list = list(sum_score[:g.stocks_num].index)    
     
